@@ -178,44 +178,6 @@
       cursor: grabbing;
     }
 
-    /* Loupe Magnifier Inset */
-    #magnifier-container {
-      position: fixed;
-      bottom: 18px;
-      right: 170px;
-      width: 240px;
-      height: 175px;
-      border-radius: 12px;
-      border: 3px solid #0C243E;
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(43, 176, 176, 0.8);
-      z-index: 900;
-      overflow: hidden;
-      background: #0f172a;
-      pointer-events: none;
-      transition: opacity 0.2s ease, transform 0.2s ease;
-    }
-    #magnifier-map {
-      width: 100%;
-      height: 100%;
-    }
-    .magnifier-crosshair {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .magnifier-crosshair::before {
-      content: '';
-      width: 22px;
-      height: 22px;
-      border: 2px solid rgba(43, 176, 176, 0.9);
-      border-radius: 50%;
-      box-shadow: 0 0 6px rgba(0,0,0,0.8);
-    }
-
     /* Hide default leaflet controls */
     .leaflet-control-zoom, .leaflet-control-attribution {
       display: none !important;
@@ -431,9 +393,6 @@
         <button onclick="toggleBasemap()" title="تبديل خريطة الأساس" class="w-9 h-9 hover:bg-[#1F8A8A] flex items-center justify-center border-b border-white/10">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
         </button>
-        <button id="btn-toggle-magnifier" onclick="toggleMagnifier()" title="عدسة التكبير (3x Loupe)" class="w-9 h-9 bg-[#1F8A8A] text-white hover:bg-[#1F8A8A] flex items-center justify-center border-b border-white/10">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        </button>
         <button onclick="fitAllZones()" title="استعراض كل المناطق السعرية" class="w-9 h-9 hover:bg-[#1F8A8A] flex items-center justify-center">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
         </button>
@@ -459,15 +418,6 @@
     <!-- Populated dynamically per track -->
   </div>
 
-  <!-- 8. ZOOMED MAGNIFIER INSET (LOUPE - Bottom Right, synced zoom+2) -->
-  <div id="magnifier-container">
-    <div id="magnifier-map"></div>
-    <div class="magnifier-crosshair"></div>
-    <div class="absolute top-1.5 right-2 z-[1000] bg-[#0C243E]/85 text-[#2BB0B0] text-[10px] font-bold px-2 py-0.5 rounded border border-[#2BB0B0]/40">
-      عدسة مكبرة ٣×
-    </div>
-  </div>
-
   <!-- 9. FLOATING POPUPS CONTAINER (All Draggable Scenario & Building Popups live here) -->
   <div id="popups-root" class="fixed inset-0 pointer-events-none z-[1050]"></div>
 
@@ -479,7 +429,7 @@
        Organized into:
        1. CONFIG
        2. MOCK DATA
-       3. MAP SETUP & MAGNIFIER LOUPE
+       3. MAP SETUP
        4. ZONE-FOCUS ENGINE (Core Interaction)
        5. POPUP MANAGER (Draggable, Z-Index, Multi-Popup)
        6. TRACK 1 — الربط المكاني (6 Scenarios)
@@ -1058,22 +1008,20 @@
     ];
 
     /* =====================================================================
-       SECTION 3: MAP SETUP, BASEMAPS, CANVAS FOOTPRINTS & MAGNIFIER LOUPE
+       SECTION 3: MAP SETUP, BASEMAPS & CANVAS FOOTPRINTS
        ===================================================================== */
-    let map, magnifierMap;
+    let map;
     let currentBasemap = 'satellite';
-    let esriTileLayer, osmTileLayer, magEsriLayer, magOsmLayer;
-    let canvasRenderer, magCanvasRenderer;
+    let esriTileLayer, osmTileLayer;
+    let canvasRenderer;
 
     // Layer Groups
     let buildingsLayerGroup, zonesLayerGroup, maskLayerGroup, customDrawLayerGroup;
     let extraScenarioLayerGroup, pricePointsLayerGroup, clusterLayerGroup, jurisdictionLayerGroup;
-    let magBuildingsGroup;
 
     // Application State
     let currentTrack = 1;
     let activeZoneFocus = null; // Holds turf polygon of currently focused zone
-    let isMagnifierEnabled = true;
     let isFreehandDrawing = false;
     let freehandPoints = [];
     let freehandTempPolyline = null;
@@ -1083,7 +1031,6 @@
 
     function initMap() {
       canvasRenderer = L.canvas({ padding: 0.5 });
-      magCanvasRenderer = L.canvas({ padding: 0.5 });
 
       map = L.map('map', {
         center: CONFIG.center,
@@ -1123,9 +1070,6 @@
         maxClusterRadius: 45
       });
 
-      // Initialize Synchronized 3x Magnifier Loupe Mini-Map
-      initMagnifierMap();
-
       // Render Initial Track 1 Layers
       renderBuildingsLayer();
       renderZonesLayer();
@@ -1135,91 +1079,18 @@
       setupFreehandMouseEvents();
     }
 
-    function initMagnifierMap() {
-      magnifierMap = L.map('magnifier-map', {
-        center: CONFIG.center,
-        zoom: Math.min(CONFIG.defaultZoom + 2, 19),
-        zoomControl: false,
-        attributionControl: false,
-        dragging: false,
-        scrollWheelZoom: false,
-        doubleClickZoom: false,
-        boxZoom: false,
-        keyboard: false,
-        preferCanvas: true
-      });
-
-      magEsriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19
-      }).addTo(magnifierMap);
-
-      magOsmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
-      });
-
-      magBuildingsGroup = L.layerGroup().addTo(magnifierMap);
-      renderMagnifierBuildings();
-
-      // Sync Magnifier to Cursor on Main Map
-      map.on('mousemove', (e) => {
-        if (!isMagnifierEnabled) return;
-        const targetZoom = Math.min(map.getZoom() + 2, 19);
-        magnifierMap.setView(e.latlng, targetZoom, { animate: false });
-      });
-
-      map.on('zoomend', () => {
-        if (!isMagnifierEnabled) return;
-        const targetZoom = Math.min(map.getZoom() + 2, 19);
-        magnifierMap.setZoom(targetZoom, { animate: false });
-      });
-    }
-
-    function renderMagnifierBuildings() {
-      magBuildingsGroup.clearLayers();
-      BUILDINGS.forEach(b => {
-        L.polygon(b.leafletCoords, {
-          renderer: magCanvasRenderer,
-          color: b.isUnregistered ? '#A8A29E' : '#F59E0B',
-          weight: 2,
-          fillColor: b.isUnregistered ? '#E5DEC9' : '#12355B',
-          fillOpacity: b.isUnregistered ? 0.35 : 0.75,
-          interactive: false
-        }).addTo(magBuildingsGroup);
-      });
-    }
-
-    function toggleMagnifier() {
-      isMagnifierEnabled = !isMagnifierEnabled;
-      const container = document.getElementById('magnifier-container');
-      const btn = document.getElementById('btn-toggle-magnifier');
-      if (isMagnifierEnabled) {
-        container.classList.remove('hidden');
-        btn.classList.add('bg-[#1F8A8A]', 'text-white');
-        magnifierMap.invalidateSize();
-        showToast('تم تفعيل عدسة التكبير (٣×) أسفل يمين الخريطة');
-      } else {
-        container.classList.add('hidden');
-        btn.classList.remove('bg-[#1F8A8A]', 'text-white');
-        showToast('تم إخفاء عدسة التكبير');
-      }
-    }
-
     function toggleBasemap() {
       const label = document.getElementById('basemap-label');
       const dot = document.getElementById('basemap-indicator');
       if (currentBasemap === 'satellite') {
         map.removeLayer(esriTileLayer);
         osmTileLayer.addTo(map);
-        magnifierMap.removeLayer(magEsriLayer);
-        magOsmLayer.addTo(magnifierMap);
         currentBasemap = 'osm';
         label.textContent = 'خريطة الشوارع (OSM)';
         dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
       } else {
         map.removeLayer(osmTileLayer);
         esriTileLayer.addTo(map);
-        magnifierMap.removeLayer(magOsmLayer);
-        magEsriLayer.addTo(magnifierMap);
         currentBasemap = 'satellite';
         label.textContent = 'مرئية فضائية (Esri)';
         dot.className = 'w-2.5 h-2.5 rounded-full bg-[#2BB0B0]';
@@ -4457,7 +4328,6 @@
                 loadedBuildings++;
               });
               renderBuildingsLayer();
-              renderMagnifierBuildings();
             }
 
             if (allBoundsCoords.length > 0) {
